@@ -239,15 +239,98 @@ const ALL_VOCAB = [];
 UNITS.forEach(u => { u.vocab.forEach(v => ALL_VOCAB.push({en:v[0],zh:v[1]})); u.extended.forEach(v => ALL_VOCAB.push({en:v[0],zh:v[1]})); });
 
 // ════════════════════════════════════════════
-//  TTS
+//  TTS — 跨平台稳定发音引擎
+// 桌面（Windows）优先 SpeechSynthesis（系统自带英文语音，零延迟）
+// 安卓优先在线TTS（国产手机多数无英文TTS引擎）
+// 复用Audio元素 + 超时兜底 + 首触解锁音频
 // ════════════════════════════════════════════
-let actx=null;
-function blip(){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.06,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.03);o.connect(g).connect(actx.destination);o.start(actx.currentTime);o.stop(actx.currentTime+.03)}catch(_){}}
-let engVoice=null;
-function pickVoice(){if(engVoice)return engVoice;try{const vs=speechSynthesis.getVoices();if(!vs.length)return null;engVoice=vs.find(v=>/google.*en|female.*en|uk.*female|us.*female/i.test(v.name))||vs.find(v=>v.lang.startsWith('en')&&/google|samantha|susan|zira|jenny|hazel/i.test(v.name))||vs.find(v=>v.lang.startsWith('en'))||vs[0];return engVoice}catch(_){return null}}
-let wt=0;function wu(){if(pickVoice()||wt++>30)return;setTimeout(wu,150)}
-try{speechSynthesis.onvoiceschanged=()=>{pickVoice()}}catch(_){};wu();setTimeout(()=>{pickVoice()},2000);
-function speak(text,el){if(!text)return;if(el)el.classList.add('playing');blip();try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.95;const v=pickVoice();if(v)u.voice=v;u.onend=()=>{if(el)el.classList.remove('playing')};speechSynthesis.speak(u)}catch(_){if(el)el.classList.remove('playing')}}
+(function(){
+  var _audioEl=null,_unlocked=false,_speechReady=false;
+  var _isAndroid=/android/i.test(navigator.userAgent);
+  var _isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  function _unlock(){
+    if(_unlocked)return;
+    _unlocked=true;
+    try{
+      _audioEl=new Audio();
+      _audioEl.volume=0.01;
+      _audioEl.play().catch(function(){});
+      setTimeout(function(){_audioEl.pause();_audioEl.volume=1;_audioEl.currentTime=0;},80);
+    }catch(e){}
+    try{var AC=window.AudioContext||window.webkitAudioContext;if(AC){var c=new AC();c.resume&&c.resume();}}catch(e){}
+  }
+  document.addEventListener('click',_unlock,{once:true});
+  document.addEventListener('touchstart',_unlock,{once:true});
+
+  function _initSpeech(){
+    if(typeof speechSynthesis==='undefined')return;
+    try{var u=new SpeechSynthesisUtterance('test');u.volume=0;speechSynthesis.speak(u);speechSynthesis.cancel();}catch(e){}
+    function _poll(){
+      try{var vs=speechSynthesis.getVoices();if(vs.length>0){_speechReady=true;return;}}catch(e){}
+      setTimeout(_poll,200);
+    }
+    try{speechSynthesis.onvoiceschanged=function(){_speechReady=true;};}catch(e){}
+    _poll();
+  }
+  _initSpeech();
+  setTimeout(function(){_speechReady=true;},3000);
+
+  function _speech(text,done){
+    if(typeof speechSynthesis==='undefined')return false;
+    try{
+      speechSynthesis.cancel();
+      var u=new SpeechSynthesisUtterance(text);
+      u.lang='en-US';u.rate=0.85;u.volume=1;
+      var vs=speechSynthesis.getVoices();
+      var v=vs.find(function(x){
+        return /google|samantha|zira|david|mark|jenny|hazel|susan|tingting|sinji|natural/i.test(x.name)
+          &&x.lang&&x.lang.indexOf('en')===0;
+      })||vs.find(function(x){return x.lang&&x.lang.indexOf('en')===0;});
+      if(v)u.voice=v;
+      u.onend=done;
+      u.onerror=function(){done();};
+      speechSynthesis.speak(u);
+      return true;
+    }catch(e){return false;}
+  }
+
+  function _online(text,done){
+    if(!_audioEl){_audioEl=new Audio();_audioEl.volume=1;}
+    var a=_audioEl;
+    a.pause();a.currentTime=0;
+    try{a.src='';}catch(e){}
+    var urls=[
+      'https://fanyi.baidu.com/gettts?lan=en&text='+encodeURIComponent(text)+'&spd=3&source=web',
+      'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encodeURIComponent(text)
+    ];
+    var idx=0,timer=0;
+    function _clean(){clearTimeout(timer);a.onended=a.onerror=null;}
+    function _next(){
+      _clean();
+      if(idx>=urls.length){_speech(text,done)||done();return;}
+      a.src=urls[idx++];
+      a.load();
+      a.onended=function(){_clean();done();};
+      a.onerror=function(){_next();};
+      var p=a.play();
+      if(p&&p.catch)p.catch(function(){_next();});
+      timer=setTimeout(function(){_next();},6000);
+    }
+    _next();
+  }
+
+  window.speak=function(text,el){
+    if(!text)return;
+    if(el)el.classList.add('playing');
+    var done=function(){if(el)el.classList.remove('playing');};
+    if(_isAndroid){
+      _online(text,done);
+    }else{
+      _speech(text,done)||_online(text,done);
+    }
+  };
+})();
 
 function confetti(n=25){const c=['#f44336','#e91e63','#9c27b0','#3f51b5','#03a9f4','#4caf50','#ffeb3b','#ff9800','#e67e22'];for(let i=0;i<n;i++){const e=document.createElement('div');e.className='cf-piece';e.style.left=Math.random()*100+'vw';e.style.top='-10px';e.style.background=c[Math.floor(Math.random()*c.length)];e.style.width=(5+Math.random()*7)+'px';e.style.height=(5+Math.random()*7)+'px';e.style.animationDuration=(.7+Math.random()*.8)+'s';e.style.animationDelay=(Math.random()*.3)+'s';document.body.appendChild(e);setTimeout(()=>e.remove(),2000)}}
 

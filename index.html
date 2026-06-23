@@ -196,92 +196,97 @@ h2 { font-size: 16px; color: #2c3e50; margin-bottom: 10px; padding-bottom: 6px; 
 if (!Object.values) Object.values = o => Object.keys(o).map(k => o[k]);
 
 // ════════════════════════════════════════════
-//  基础引擎：嘀声 + TTS
+//  基础引擎：跨平台稳定TTS发音
+//  桌面（Windows）优先 SpeechSynthesis（系统自带英文语音，零延迟）
+//  安卓优先在线TTS（国产手机多数无英文TTS引擎）
+//  复用Audio元素 + 超时兜底 + 首触解锁音频
 // ════════════════════════════════════════════
+(function(){
+  var _audioEl=null,_unlocked=false,_speechReady=false;
+  var _isAndroid=/android/i.test(navigator.userAgent);
 
-let actx = null;
-function blip() {
-  try {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
-    const osc = actx.createOscillator();
-    const g = actx.createGain();
-    osc.frequency.value = 880;
-    g.gain.setValueAtTime(0.08, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.03);
-    osc.connect(g).connect(actx.destination);
-    osc.start(actx.currentTime);
-    osc.stop(actx.currentTime + 0.03);
-  } catch(_) {}
-}
-
-// 语音合成：优先用原生 SpeechSynthesis，安卓国产机用 Google TTS 在线朗读
-let engVoice = null, isAndroid = /android/i.test(navigator.userAgent), ttsOk = false;
-
-// 检测原生 TTS 是否可用
-function checkTTS() {
-  if (typeof speechSynthesis === 'undefined') return false;
-  try {
-    const d = new SpeechSynthesisUtterance('');
-    return true;
-  } catch(_) { return false; }
-}
-ttsOk = checkTTS();
-
-// 尝试加载语音
-function pollVoices() {
-  if (engVoice) return true;
-  try {
-    const vs = speechSynthesis.getVoices();
-    if (!vs.length) return false;
-    engVoice = vs.find(v => /zira|jenny|hazel|susan|tingting|sinji/i.test(v.name))
-            || vs.find(v => v.lang && v.lang.startsWith('en'))
-            || vs[0];
-    return !!engVoice;
-  } catch(_) { return true; }
-}
-let warmTries = 0;
-function warmup() {
-  if (pollVoices() || warmTries++ > 30) return;
-  setTimeout(warmup, 100);
-}
-try {
-  speechSynthesis.onvoiceschanged = () => { pollVoices(); };
-  // 安卓预热：空朗读一次激活 TTS 引擎
-  const d = new SpeechSynthesisUtterance('');
-  speechSynthesis.speak(d); speechSynthesis.cancel();
-} catch(_) {}
-warmup();
-setTimeout(() => { pollVoices(); }, 2000);
-
-// 主朗读函数：优先百度在线 TTS（国内网络友好），降级原生 SpeechSynthesis
-function speak(text, el) {
-  if (!text) return;
-  if (el) el.classList.add('playing');
-  blip();
-  // 百度 TTS（国内可访问，不需要 API key）
-  try {
-    const a = new Audio('https://fanyi.baidu.com/gettts?lan=en&text='
-      + encodeURIComponent(text) + '&spd=3&source=web');
-    a.onended = () => { if (el) el.classList.remove('playing'); };
-    a.play().catch(() => { if (el) el.classList.remove('playing'); });
-    return;
-  } catch(_) {}
-  // 降级：原生 SpeechSynthesis
-  if (ttsOk) {
-    try {
-      speechSynthesis.cancel();
-      const msg = new SpeechSynthesisUtterance(text);
-      msg.lang = 'en-US'; msg.rate = 0.88;
-      if (engVoice && engVoice.lang && engVoice.lang.startsWith('en')) msg.voice = engVoice;
-      msg.onend = () => { if (el) el.classList.remove('playing'); };
-      speechSynthesis.resume();
-      speechSynthesis.speak(msg);
-      return;
-    } catch(_) {}
+  function _unlock(){
+    if(_unlocked)return;
+    _unlocked=true;
+    try{
+      _audioEl=new Audio();
+      _audioEl.volume=0.01;
+      _audioEl.play().catch(function(){});
+      setTimeout(function(){_audioEl.pause();_audioEl.volume=1;_audioEl.currentTime=0;},80);
+    }catch(e){}
+    try{var AC=window.AudioContext||window.webkitAudioContext;if(AC){var c=new AC();c.resume&&c.resume();}}catch(e){}
   }
-  if (el) el.classList.remove('playing');
-}
+  document.addEventListener('click',_unlock,{once:true});
+  document.addEventListener('touchstart',_unlock,{once:true});
+
+  function _initSpeech(){
+    if(typeof speechSynthesis==='undefined')return;
+    try{var u=new SpeechSynthesisUtterance('test');u.volume=0;speechSynthesis.speak(u);speechSynthesis.cancel();}catch(e){}
+    function _poll(){
+      try{var vs=speechSynthesis.getVoices();if(vs.length>0){_speechReady=true;return;}}catch(e){}
+      setTimeout(_poll,200);
+    }
+    try{speechSynthesis.onvoiceschanged=function(){_speechReady=true;};}catch(e){}
+    _poll();
+  }
+  _initSpeech();
+  setTimeout(function(){_speechReady=true;},3000);
+
+  function _speech(text,done){
+    if(typeof speechSynthesis==='undefined')return false;
+    try{
+      speechSynthesis.cancel();
+      var u=new SpeechSynthesisUtterance(text);
+      u.lang='en-US';u.rate=0.85;u.volume=1;
+      var vs=speechSynthesis.getVoices();
+      var v=vs.find(function(x){
+        return /google|samantha|zira|david|mark|jenny|hazel|susan|tingting|sinji|natural/i.test(x.name)
+          &&x.lang&&x.lang.indexOf('en')===0;
+      })||vs.find(function(x){return x.lang&&x.lang.indexOf('en')===0;});
+      if(v)u.voice=v;
+      u.onend=done;
+      u.onerror=function(){done();};
+      speechSynthesis.speak(u);
+      return true;
+    }catch(e){return false;}
+  }
+
+  function _online(text,done){
+    if(!_audioEl){_audioEl=new Audio();_audioEl.volume=1;}
+    var a=_audioEl;
+    a.pause();a.currentTime=0;
+    try{a.src='';}catch(e){}
+    var urls=[
+      'https://fanyi.baidu.com/gettts?lan=en&text='+encodeURIComponent(text)+'&spd=3&source=web',
+      'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encodeURIComponent(text)
+    ];
+    var idx=0,timer=0;
+    function _clean(){clearTimeout(timer);a.onended=a.onerror=null;}
+    function _next(){
+      _clean();
+      if(idx>=urls.length){_speech(text,done)||done();return;}
+      a.src=urls[idx++];
+      a.load();
+      a.onended=function(){_clean();done();};
+      a.onerror=function(){_next();};
+      var p=a.play();
+      if(p&&p.catch)p.catch(function(){_next();});
+      timer=setTimeout(function(){_next();},6000);
+    }
+    _next();
+  }
+
+  window.speak=function(text,el){
+    if(!text)return;
+    if(el)el.classList.add('playing');
+    var done=function(){if(el)el.classList.remove('playing');};
+    if(_isAndroid){
+      _online(text,done);
+    }else{
+      _speech(text,done)||_online(text,done);
+    }
+  };
+})();
 
 // ════════════════════════════════════════════
 //  庆祝效果
