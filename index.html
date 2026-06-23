@@ -215,21 +215,30 @@ function blip() {
   } catch(_) {}
 }
 
-// 语音合成（部分移动端浏览器不支持，必须兜底防崩）
-let engVoice = null;
-let speechReady = false;
+// 语音合成：优先用原生 SpeechSynthesis，安卓国产机用 Google TTS 在线朗读
+let engVoice = null, isAndroid = /android/i.test(navigator.userAgent), ttsOk = false;
 
+// 检测原生 TTS 是否可用
+function checkTTS() {
+  if (typeof speechSynthesis === 'undefined') return false;
+  try {
+    const d = new SpeechSynthesisUtterance('');
+    return true;
+  } catch(_) { return false; }
+}
+ttsOk = checkTTS();
+
+// 尝试加载语音
 function pollVoices() {
   if (engVoice) return true;
   try {
     const vs = speechSynthesis.getVoices();
     if (!vs.length) return false;
     engVoice = vs.find(v => /zira|jenny|hazel|susan|tingting|sinji/i.test(v.name))
-            || vs.find(v => v.lang.startsWith('en'))
+            || vs.find(v => v.lang && v.lang.startsWith('en'))
             || vs[0];
-    speechReady = true;
     return !!engVoice;
-  } catch(_) { speechReady = true; return true; }
+  } catch(_) { return true; }
 }
 let warmTries = 0;
 function warmup() {
@@ -238,24 +247,37 @@ function warmup() {
 }
 try {
   speechSynthesis.onvoiceschanged = () => { pollVoices(); };
-  // 安卓预热：空朗读一次唤醒 TTS 引擎
-  const d = new SpeechSynthesisUtterance(''); speechSynthesis.speak(d); speechSynthesis.cancel();
+  // 安卓预热：空朗读一次激活 TTS 引擎
+  const d = new SpeechSynthesisUtterance('');
+  speechSynthesis.speak(d); speechSynthesis.cancel();
 } catch(_) {}
 warmup();
 setTimeout(() => { pollVoices(); }, 2000);
 
+// 主朗读函数
 function speak(text, el) {
   if (!text) return;
   if (el) el.classList.add('playing');
   blip();
+  // 优先用原生 TTS
+  if (ttsOk) {
+    try {
+      speechSynthesis.cancel();
+      const msg = new SpeechSynthesisUtterance(text);
+      msg.lang = 'en-US'; msg.rate = 0.88;
+      if (engVoice && engVoice.lang && engVoice.lang.startsWith('en')) msg.voice = engVoice;
+      msg.onend = () => { if (el) el.classList.remove('playing'); };
+      speechSynthesis.resume();
+      speechSynthesis.speak(msg);
+      return;
+    } catch(_) {}
+  }
+  // 原生 TTS 不可用时用在线 TTS
   try {
-    speechSynthesis.cancel();
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.lang = 'en-US'; msg.rate = 0.95;
-    if (engVoice) msg.voice = engVoice;
-    msg.onend = () => { if (el) el.classList.remove('playing'); };
-    speechSynthesis.resume();
-    speechSynthesis.speak(msg);
+    const a = new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=en&q='
+      + encodeURIComponent(text) + '&client=tw-ob');
+    a.onended = () => { if (el) el.classList.remove('playing'); };
+    a.play();
   } catch(_) { if (el) el.classList.remove('playing'); }
 }
 
