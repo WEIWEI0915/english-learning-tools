@@ -243,12 +243,11 @@ UNITS.forEach(u => { u.vocab.forEach(v => ALL_VOCAB.push({en:v[0],zh:v[1]})); u.
 // ════════════════════════════════════════════
 let actx=null;
 function blip(){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.06,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.03);o.connect(g).connect(actx.destination);o.start(actx.currentTime);o.stop(actx.currentTime+.03)}catch(_){}}
-let utter=null,engVoice=null;
-try{utter=new SpeechSynthesisUtterance('');utter.lang='en-US';utter.rate=.95}catch(_){}
-function pv(){if(!utter||engVoice)return!!engVoice;try{const vs=speechSynthesis.getVoices();if(!vs.length)return!1;engVoice=vs.find(v=>/zira|jenny|hazel|susan|samantha/i.test(v.name))||vs.find(v=>v.name.includes('Microsoft')&&v.lang.startsWith('en'))||vs.find(v=>v.lang.startsWith('en'))||vs[0];if(engVoice)utter.voice=engVoice;return!!engVoice}catch(_){return!0}}
-let wt=0;function wu(){if(!utter||pv()||wt++>30)return;setTimeout(wu,100)}
-try{speechSynthesis.onvoiceschanged=()=>{pv()}}catch(_){};wu();setTimeout(()=>{pv()},2000);
-function speak(text,el){if(!text)return;if(el)el.classList.add('playing');blip();if(utter){try{utter.text=text;if(engVoice)utter.voice=engVoice;utter.onend=()=>{if(el)el.classList.remove('playing')};if(!speechSynthesis.speaking)speechSynthesis.speak(utter)}catch(_){if(el)el.classList.remove('playing')}}}
+let engVoice=null;
+function pickVoice(){if(engVoice)return engVoice;try{const vs=speechSynthesis.getVoices();if(!vs.length)return null;engVoice=vs.find(v=>/google.*en|female.*en|uk.*female|us.*female/i.test(v.name))||vs.find(v=>v.lang.startsWith('en')&&/google|samantha|susan|zira|jenny|hazel/i.test(v.name))||vs.find(v=>v.lang.startsWith('en'))||vs[0];return engVoice}catch(_){return null}}
+let wt=0;function wu(){if(pickVoice()||wt++>30)return;setTimeout(wu,150)}
+try{speechSynthesis.onvoiceschanged=()=>{pickVoice()}}catch(_){};wu();setTimeout(()=>{pickVoice()},2000);
+function speak(text,el){if(!text)return;if(el)el.classList.add('playing');blip();try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.95;const v=pickVoice();if(v)u.voice=v;u.onend=()=>{if(el)el.classList.remove('playing')};speechSynthesis.speak(u)}catch(_){if(el)el.classList.remove('playing')}}
 
 function confetti(n=25){const c=['#f44336','#e91e63','#9c27b0','#3f51b5','#03a9f4','#4caf50','#ffeb3b','#ff9800','#e67e22'];for(let i=0;i<n;i++){const e=document.createElement('div');e.className='cf-piece';e.style.left=Math.random()*100+'vw';e.style.top='-10px';e.style.background=c[Math.floor(Math.random()*c.length)];e.style.width=(5+Math.random()*7)+'px';e.style.height=(5+Math.random()*7)+'px';e.style.animationDuration=(.7+Math.random()*.8)+'s';e.style.animationDelay=(Math.random()*.3)+'s';document.body.appendChild(e);setTimeout(()=>e.remove(),2000)}}
 
