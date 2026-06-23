@@ -243,7 +243,7 @@ if (!Object.values) Object.values = o => Object.keys(o).map(k => o[k]);
         return /google|samantha|zira|david|mark|jenny|hazel|susan|tingting|sinji|natural/i.test(x.name)
           &&x.lang&&x.lang.indexOf('en')===0;
       })||vs.find(function(x){return x.lang&&x.lang.indexOf('en')===0;});
-      if(v)u.voice=v;else return false;
+      if(v)u.voice=v;
       u.onend=done;
       u.onerror=function(){done();};
       speechSynthesis.speak(u);
