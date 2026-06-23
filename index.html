@@ -254,12 +254,20 @@ try {
 warmup();
 setTimeout(() => { pollVoices(); }, 2000);
 
-// 主朗读函数
+// 主朗读函数：优先百度在线 TTS（国内网络友好），降级原生 SpeechSynthesis
 function speak(text, el) {
   if (!text) return;
   if (el) el.classList.add('playing');
   blip();
-  // 优先用原生 TTS
+  // 百度 TTS（国内可访问，不需要 API key）
+  try {
+    const a = new Audio('https://fanyi.baidu.com/gettts?lan=en&text='
+      + encodeURIComponent(text) + '&spd=3&source=web');
+    a.onended = () => { if (el) el.classList.remove('playing'); };
+    a.play().catch(() => { if (el) el.classList.remove('playing'); });
+    return;
+  } catch(_) {}
+  // 降级：原生 SpeechSynthesis
   if (ttsOk) {
     try {
       speechSynthesis.cancel();
@@ -272,13 +280,7 @@ function speak(text, el) {
       return;
     } catch(_) {}
   }
-  // 原生 TTS 不可用时用在线 TTS
-  try {
-    const a = new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=en&q='
-      + encodeURIComponent(text) + '&client=tw-ob');
-    a.onended = () => { if (el) el.classList.remove('playing'); };
-    a.play();
-  } catch(_) { if (el) el.classList.remove('playing'); }
+  if (el) el.classList.remove('playing');
 }
 
 // ════════════════════════════════════════════
