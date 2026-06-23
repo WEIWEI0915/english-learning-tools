@@ -252,7 +252,10 @@ function speak(text, el) {
     try {
       utter.text = text; if (engVoice) utter.voice = engVoice;
       utter.onend = () => { if (el) el.classList.remove('playing'); };
-      if (!speechSynthesis.speaking) speechSynthesis.speak(utter);
+      // iOS 兼容：某些 iOS 版本需要 cancel+resume 才能正常 speak
+      speechSynthesis.cancel();
+      speechSynthesis.resume();
+      speechSynthesis.speak(utter);
     } catch(_) { if (el) el.classList.remove('playing'); }
   }
 }
