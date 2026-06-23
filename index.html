@@ -212,26 +212,32 @@ function blip() {
   } catch(_) {}
 }
 
-const utter = new SpeechSynthesisUtterance('');
-utter.lang = 'en-US'; utter.rate = 0.95;
-let engVoice = null;
+// 语音合成（部分移动端浏览器不支持，必须兜底防崩）
+let utter = null, engVoice = null;
+try {
+  utter = new SpeechSynthesisUtterance('');
+  utter.lang = 'en-US'; utter.rate = 0.95;
+} catch(_) {}
+
 function pollVoices() {
-  if (engVoice) return true;
-  const vs = speechSynthesis.getVoices();
-  if (!vs.length) return false;
-  engVoice = vs.find(v => /zira|jenny|hazel|susan/i.test(v.name))
-          || vs.find(v => v.name.includes('Microsoft') && v.lang.startsWith('en'))
-          || vs.find(v => v.lang.startsWith('en'))
-          || vs[0];
-  if (engVoice) utter.voice = engVoice;
-  return !!engVoice;
+  if (!utter || engVoice) return !!engVoice;
+  try {
+    const vs = speechSynthesis.getVoices();
+    if (!vs.length) return false;
+    engVoice = vs.find(v => /zira|jenny|hazel|susan/i.test(v.name))
+            || vs.find(v => v.name.includes('Microsoft') && v.lang.startsWith('en'))
+            || vs.find(v => v.lang.startsWith('en'))
+            || vs[0];
+    if (engVoice) utter.voice = engVoice;
+    return !!engVoice;
+  } catch(_) { return true; }
 }
 let warmTries = 0;
 function warmup() {
-  if (pollVoices() || warmTries++ > 30) return;
+  if (!utter || pollVoices() || warmTries++ > 30) return;
   setTimeout(warmup, 100);
 }
-speechSynthesis.onvoiceschanged = () => { pollVoices(); };
+try { speechSynthesis.onvoiceschanged = () => { pollVoices(); }; } catch(_) {}
 warmup();
 setTimeout(() => { pollVoices(); }, 2000);
 
@@ -239,9 +245,13 @@ function speak(text, el) {
   if (!text) return;
   if (el) el.classList.add('playing');
   blip();
-  utter.text = text; if (engVoice) utter.voice = engVoice;
-  utter.onend = () => { if (el) el.classList.remove('playing'); };
-  if (!speechSynthesis.speaking) speechSynthesis.speak(utter);
+  if (utter) {
+    try {
+      utter.text = text; if (engVoice) utter.voice = engVoice;
+      utter.onend = () => { if (el) el.classList.remove('playing'); };
+      if (!speechSynthesis.speaking) speechSynthesis.speak(utter);
+    } catch(_) { if (el) el.classList.remove('playing'); }
+  }
 }
 
 // ════════════════════════════════════════════
