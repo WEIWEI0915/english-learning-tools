@@ -217,6 +217,7 @@ function blip() {
 
 // 语音合成（部分移动端浏览器不支持，必须兜底防崩）
 let engVoice = null;
+let speechReady = false;
 
 function pollVoices() {
   if (engVoice) return true;
@@ -226,15 +227,20 @@ function pollVoices() {
     engVoice = vs.find(v => /zira|jenny|hazel|susan|tingting|sinji/i.test(v.name))
             || vs.find(v => v.lang.startsWith('en'))
             || vs[0];
+    speechReady = true;
     return !!engVoice;
-  } catch(_) { return true; }
+  } catch(_) { speechReady = true; return true; }
 }
 let warmTries = 0;
 function warmup() {
   if (pollVoices() || warmTries++ > 30) return;
   setTimeout(warmup, 100);
 }
-try { speechSynthesis.onvoiceschanged = () => { pollVoices(); }; } catch(_) {}
+try {
+  speechSynthesis.onvoiceschanged = () => { pollVoices(); };
+  // 安卓预热：空朗读一次唤醒 TTS 引擎
+  const d = new SpeechSynthesisUtterance(''); speechSynthesis.speak(d); speechSynthesis.cancel();
+} catch(_) {}
 warmup();
 setTimeout(() => { pollVoices(); }, 2000);
 
@@ -243,11 +249,9 @@ function speak(text, el) {
   if (el) el.classList.add('playing');
   blip();
   try {
-    // iOS 兼容：每次创建新 utterance + cancel + resume
     speechSynthesis.cancel();
     const msg = new SpeechSynthesisUtterance(text);
-    msg.lang = 'en-US';
-    msg.rate = 0.95;
+    msg.lang = 'en-US'; msg.rate = 0.95;
     if (engVoice) msg.voice = engVoice;
     msg.onend = () => { if (el) el.classList.remove('playing'); };
     speechSynthesis.resume();
