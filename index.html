@@ -388,7 +388,10 @@ function buildWords() {
 function buildSentences() {
   const p = document.getElementById('panel-sentences');
   let h = '<div style="font-size:12px;color:#999;margin-bottom:6px">📎 对应课件 Part 3-4 · 日常句型 + 基础语法（第27-36页）</div><h2>句型跟读 — 点击听发音</h2><div class="items">';
-  SENTENCES.forEach(it => { h += '<div class="item sentence" onclick="speak(\'' + it.en + '\',this)">' + it.en + '<span class="zh">' + it.zh + '</span></div>'; });
+  SENTENCES.forEach(it => {
+    const en = it.en.replace(/'/g, "\\'");
+    h += '<div class="item sentence" onclick="speak(\'' + en + '\',this)">' + it.en + '<span class="zh">' + it.zh + '</span></div>';
+  });
   p.innerHTML = h + '</div>';
 }
 
